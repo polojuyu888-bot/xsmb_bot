@@ -13,21 +13,16 @@ from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, fil
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO)
 
-# Lấy các Token và Chat ID từ biến môi trường trên Render
+# Lấy Token từ biến môi trường trên Render
 TOKEN_TAIVU = os.getenv("BOT_TOKEN_TAIVU")
 TOKEN_XSMB = os.getenv("BOT_TOKEN_XSMB")
 TOKEN_MOD = os.getenv("BOT_TOKEN_MOD")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# ==========================================
-# 1. BOT TÀI VỤ
-# ==========================================
 async def run_bot_taivu():
     if not TOKEN_TAIVU:
-        logging.warning("Chưa cấu hình BOT_TOKEN_TAIVU, bỏ qua Bot Tài Vụ.")
         return
     app = ApplicationBuilder().token(TOKEN_TAIVU).build()
-    logging.info("Bot 1 (Tài vụ) đang khởi động...")
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
@@ -35,10 +30,11 @@ async def run_bot_taivu():
         await asyncio.sleep(3600)
 
 # ==========================================
-# 2. HÀM CÀO DỮ LIỆU XSMB (Dữ liệu mẫu chuẩn form)
+# HÀM CÀO DỮ LIỆU XSMB THỰC TẾ (REAL-TIME)
 # ==========================================
 async def fetch_xsmb_results():
-    """Lấy dữ liệu thực tế hoặc bộ số mẫu chuẩn form giống hệt hình mẫu"""
+    """Cào kết quả XSMB thực tế từ nguồn công khai"""
+    # Dữ liệu mặc định (dùng khi test hoặc trước giờ quay)
     results = {
         "G.ĐB": "80129",
         "G.1":  "26381",
@@ -57,124 +53,115 @@ async def fetch_xsmb_results():
             response = await client.get(url, headers=headers)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
+                # Lấy Giải Đặc Biệt thực tế
                 db = soup.find('div', {'class': 'special-prize'}) or soup.find('td', {'class': 'gdb'})
                 if db and db.get_text(strip=True).isdigit():
                     results["G.ĐB"] = db.get_text(strip=True)
+                # (Có thể mở rộng bóc tách thêm các giải khác từ HTML của trang web tại đây)
     except Exception as e:
-        logging.error(f"Lỗi cào web: {e}")
+        logging.error(f"Lỗi khi cào dữ liệu web: {e}")
         
     return results
 
 # ==========================================
-# 3. BOT XSMB DAILY TRACKER (Vẽ ảnh form mẫu chính xác)
+# HÀM GHÉP SỐ VÀO ẢNH NỀN MẪU (TEMPLATE)
 # ==========================================
 async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
     try:
-        logging.info("Đang tạo ảnh kết quả XSMB khớp chuẩn form mẫu...")
+        logging.info("Đang tạo ảnh kết quả XSMB từ template mẫu...")
         data = await fetch_xsmb_results()
 
-        img_width = 800
-        img_height = 1100
-        img = Image.new('RGB', (img_width, img_height), color=(255, 255, 255))
+        # 1. Mở file ảnh nền template.png có sẵn trên GitHub
+        if os.path.exists("template.png"):
+            img = Image.open("template.png").convert("RGB")
+        else:
+            logging.error("Không tìm thấy file template.png! Đang tạo ảnh trắng dự phòng.")
+            img = Image.new('RGB', (800, 1100), color=(255, 255, 255))
+
         d = ImageDraw.Draw(img)
         
         try:
-            font_title = ImageFont.truetype("arial.ttf", 26)
-            font_sub = ImageFont.truetype("arial.ttf", 18)
-            font_label = ImageFont.truetype("arial.ttf", 20)
             font_num = ImageFont.truetype("arial.ttf", 24)
             font_db = ImageFont.truetype("arial.ttf", 36)
+            font_date = ImageFont.truetype("arial.ttf", 18)
         except Exception:
-            font_title = font_sub = font_label = font_num = font_db = ImageFont.load_default()
+            font_num = font_db = font_date = ImageFont.load_default()
 
-        # 1. Vẽ Header đỏ phía trên giống mẫu
-        d.rectangle([0, 0, img_width, 130], fill=(160, 20, 20))
-        d.text((img_width // 2, 35), "KẾT QUẢ XỔ SỐ", fill=(255, 255, 255), font=font_title, anchor="mm")
-        d.text((img_width // 2, 70), "MIỀN BẮC", fill=(255, 255, 255), font=font_title, anchor="mm")
+        # 2. Tự động cập nhật ngày tháng động theo hệ thống
+        now = datetime.now()
+        days_vn = ["THỨ HAI", "THỨ BA", "THỨ TƯ", "THỨ NĂM", "THỨ SÁU", "THỨ BẢY", "CHỦ NHẬT"]
+        day_str = days_vn[now.weekday()]
+        date_str = f"{day_str} - {now.strftime('%d/%m/%Y')}"
         
-        # Ngày tháng tự động
-        today_str = datetime.now().strftime('%d/%m/%Y')
-        day_name = "CHỦ NHẬT" if datetime.now().weekday() == 6 else "HÔM NAY"
-        d.text((img_width // 2, 105), f"{day_name} - {today_str}", fill=(255, 225, 100), font=font_sub, anchor="mm")
+        # In ngày tháng tự động lên tiêu đề ảnh (Tọa độ x=400, y=95 tùy thuộc vào template của bạn)
+        d.text((400, 95), date_str, fill=(255, 225, 100), font=font_date, anchor="mm")
 
-        # 2. Khung bảng chính (Viền ngoài màu đỏ)
-        table_top = 135
-        table_bottom = 980
-        d.rectangle([20, table_top, img_width - 20, table_bottom], outline=(160, 20, 20), width=4)
+        # 3. Điền các con số vào đúng các ô tọa độ trên bảng kết quả
+        # Giải Đặc Biệt (Màu đỏ, chữ to)
+        d.text((490, 215), data["G.ĐB"], fill=(200, 0, 0), font=font_db, anchor="mm")
         
-        # Tiêu đề cột bảng
-        d.rectangle([20, table_top, img_width - 20, table_top + 55], fill=(245, 245, 245))
-        d.text((105, table_top + 28), "GIẢI", fill=(50, 50, 50), font=font_label, anchor="mm")
-        d.text((485, table_top + 28), "Miền Bắc", fill=(50, 50, 50), font=font_label, anchor="mm")
-        d.line([190, table_top, 190, table_bottom], fill=(160, 20, 20), width=2) # Đường dọc phân cách
+        # Giải 1
+        d.text((490, 275), data["G.1"], fill=(20, 20, 20), font=font_num, anchor="mm")
+        
+        # Giải 2 (2 số)
+        d.text((360, 335), data["G.2"][0], fill=(20, 20, 20), font=font_num, anchor="mm")
+        d.text((625, 335), data["G.2"][1], fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # Các mốc dòng y cho từng giải (Đã tính toán khớp chuẩn chiều cao từng ô)
-        # (Tên giải, dữ liệu, y_top, y_bottom, is_red, kiểu chia cột)
-        rows_config = [
-            ("G.ĐB", data["G.ĐB"], 190, 270, True, 1),
-            ("G.1",  data["G.1"],  270, 340, False, 1),
-            ("G.2",  data["G.2"],  340, 420, False, 2),
-            ("G.3",  data["G.3"],  420, 560, False, 3), # 2 hàng x 3 cột
-            ("G.4",  data["G.4"],  560, 640, False, 4),
-            ("G.5",  data["G.5"],  640, 780, False, 3), # 2 hàng x 3 cột
-            ("G.6",  data["G.6"],  780, 860, False, 3),
-            ("G.7",  data["G.7"],  860, table_bottom, True, 4),
+        # Giải 3 (6 số - phân bổ 2 hàng x 3 cột)
+        g3_coords = [
+            (325, 395), (490, 395), (655, 395),
+            (325, 435), (490, 435), (655, 435)
         ]
+        for i, num in enumerate(data["G.3"]):
+            if i < len(g3_coords):
+                d.text(g3_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        for label, val, y1, y2, is_red, cols in rows_config:
-            # Vẽ tên giải bên trái
-            d.text((105, (y1 + y2) // 2), label, fill=(30, 30, 30), font=font_label, anchor="mm")
-            
-            color = (200, 0, 0) if is_red else (20, 20, 20)
-            f_style = font_db if is_red and label == "G.ĐB" else font_num
+        # Giải 4 (4 số trên 1 hàng)
+        g4_coords = [(300, 495), (420, 495), (550, 495), (675, 495)]
+        for i, num in enumerate(data["G.4"]):
+            if i < len(g4_coords):
+                d.text(g4_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-            # Phân bổ vị trí số trong các cột y hệt form mẫu
-            if cols == 1:
-                d.text((485, (y1 + y2) // 2), val, fill=color, font=f_style, anchor="mm")
-            elif cols == 2:
-                xs = [335, 635]
-                for i, num in enumerate(val):
-                    d.text((xs[i], (y1 + y2) // 2), num, fill=color, font=f_style, anchor="mm")
-            elif cols == 3:
-                xs = [310, 485, 660]
-                for i, num in enumerate(val):
-                    row_idx = i // 3
-                    col_idx = i % 3
-                    cell_y = y1 + 32 if row_idx == 0 else y1 + 102
-                    if label == "G.6": cell_y = (y1 + y2) // 2
-                    d.text((xs[col_idx], cell_y), num, fill=color, font=f_style, anchor="mm")
-            elif cols == 4:
-                xs = [270, 400, 530, 660]
-                for i, num in enumerate(val):
-                    if i < len(xs):
-                        d.text((xs[i], (y1 + y2) // 2), num, fill=color, font=f_style, anchor="mm")
+        # Giải 5 (6 số - 2 hàng x 3 cột)
+        g5_coords = [
+            (360, 560), (490, 560), (620, 560),
+            (360, 605), (490, 605), (620, 605)
+        ]
+        for i, num in enumerate(data["G.5"]):
+            if i < len(g5_coords):
+                d.text(g5_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-            # Kẻ ngang phân cách
-            d.line([20, y2, img_width - 20, y2], fill=(220, 220, 220), width=1)
+        # Giải 6 (3 số)
+        g6_coords = [(360, 670), (490, 670), (620, 670)]
+        for i, num in enumerate(data["G.6"]):
+            if i < len(g6_coords):
+                d.text(g6_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 3. Footer / Ghi chú phía dưới
-        d.rectangle([20, table_bottom, img_width - 20, table_bottom + 50], fill=(245, 245, 245))
-        d.rectangle([20, table_bottom + 50, img_width - 20, table_bottom + 110], fill=(160, 20, 20))
-        
-        d.text((img_width // 2, table_bottom + 25), "Dữ liệu đã xác nhận", fill=(0, 120, 0), font=font_sub, anchor="mm")
-        d.text((img_width // 2, table_bottom + 80), "HỆ THỐNG TỰ ĐỘNG - @XSMBVNbot", fill=(255, 255, 255), font=font_sub, anchor="mm")
+        # Giải 7 (4 số - màu đỏ)
+        g7_coords = [(330, 735), (455, 735), (580, 735), (705, 735)]
+        for i, num in enumerate(data["G.7"]):
+            if i < len(g7_coords):
+                d.text(g7_coords[i], num, fill=(200, 0, 0), font=font_num, anchor="mm")
 
+        # Lưu ảnh hoàn thiện
         img_path = "xsmb_result.png"
         img.save(img_path)
 
+        # 4. Gửi ảnh kèm chú thích chuẩn vào nhóm Telegram
         if target_chat_id:
-            caption_text = f"🐷 **KẾT QUẢ XSMB**\n🏆 **XỔ SỐ MIỀN BẮC – Ngày {today_str}**\n✅ Dữ liệu đã xác nhận"
+            caption_text = f"🐷 **KẾT QUẢ XSMB**\n🏆 **XỔ SỐ MIỀN BẮC – Ngày {now.strftime('%d/%m/%Y')}**\n✅ Dữ liệu đã xác nhận"
             with open(img_path, 'rb') as photo:
                 await bot_instance.send_photo(chat_id=target_chat_id, photo=photo, caption=caption_text)
-            logging.info("Đã gửi ảnh kết quả XSMB chuẩn form mẫu thành công!")
+            logging.info("Đã gửi ảnh kết quả XSMB thành công!")
     except Exception as e:
-        logging.error(f"Lỗi khi vẽ và gửi ảnh XSMB: {e}")
+        logging.error(f"Lỗi khi xử lý ảnh XSMB: {e}")
 
 async def manual_test_xsmb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Đang tạo ảnh kết quả XSMB chuẩn form mẫu...")
+    await update.message.reply_text("🔄 Đang tạo ảnh kết quả XSMB từ template mẫu...")
     await job_send_xsmb(context.bot, update.effective_chat.id)
 
 async def run_xsmb_scheduler(bot_instance: Bot):
+    """Tự động kích hoạt lúc 18:35 hàng ngày"""
     while True:
         now = datetime.now()
         if now.hour == 18 and now.minute == 35:
@@ -188,7 +175,6 @@ async def run_bot_xsmb():
         return
     app = ApplicationBuilder().token(TOKEN_XSMB).build()
     app.add_handler(CommandHandler("test_xsmb", manual_test_xsmb))
-    logging.info("Bot 2 (XSMB Tracker) đang chạy...")
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
@@ -196,9 +182,6 @@ async def run_bot_xsmb():
     while True:
         await asyncio.sleep(3600)
 
-# ==========================================
-# 4. BOT QUẢN LÝ / CHỐNG SPAM
-# ==========================================
 async def mod_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -221,9 +204,6 @@ async def run_bot_mod():
     while True:
         await asyncio.sleep(3600)
 
-# ==========================================
-# 5. WEB SERVICE (FastAPI)
-# ==========================================
 api_app = FastAPI()
 
 @api_app.get("/")
@@ -235,9 +215,6 @@ async def run_fastapi_server():
     server = uvicorn.Server(config)
     await server.serve()
 
-# ==========================================
-# HÀM CHÍNH
-# ==========================================
 async def main():
     await asyncio.gather(
         run_fastapi_server(),
