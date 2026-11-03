@@ -58,78 +58,85 @@ async def fetch_xsmb_results():
 
 async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
     try:
-        logging.info("Đang tạo ảnh kết quả XSMB từ template chú ngựa mới...")
+        logging.info("Đang tạo ảnh kết quả XSMB từ template chú ngựa...")
         data = await fetch_xsmb_results()
 
         if os.path.exists("template.png"):
             img = Image.open("template.png").convert("RGB")
         else:
-            img = Image.new('RGB', (800, 1100), color=(255, 255, 255))
+            img = Image.new('RGB', (800, 1200), color=(255, 255, 255))
 
+        # Lấy kích thước thực tế của ảnh template để căn tọa độ chính xác tuyệt đối
+        w, h = img.size
         d = ImageDraw.Draw(img)
         
         try:
-            font_num = ImageFont.truetype("arial.ttf", 24)
-            font_db = ImageFont.truetype("arial.ttf", 34)
-            font_date = ImageFont.truetype("arial.ttf", 18)
+            # Tự động scale cỡ chữ theo chiều rộng ảnh
+            f_size_num = int(w * 0.035)
+            f_size_db = int(w * 0.048)
+            f_size_date = int(w * 0.025)
+            
+            font_num = ImageFont.truetype("arial.ttf", f_size_num)
+            font_db = ImageFont.truetype("arial.ttf", f_size_db)
+            font_date = ImageFont.truetype("arial.ttf", f_size_date)
         except Exception:
             font_num = font_db = font_date = ImageFont.load_default()
 
-        # Tự động cập nhật ngày tháng động xuống đúng vị trí dưới nút XSMB
+        # Tự động cập nhật ngày tháng động (Đặt ngay dưới dòng chữ KẾT QUẢ XỔ SỐ MIỀN BẮC)
         now = datetime.now()
         days_vn = ["THỨ HAI", "THỨ BA", "THỨ TƯ", "THỨ NĂM", "THỨ SÁU", "THỨ BẢY", "CHỦ NHẬT"]
         day_str = days_vn[now.weekday()]
         date_str = f"{day_str} - {now.strftime('%d/%m/%Y')}"
         
-        d.text((400, 158), date_str, fill=(255, 225, 100), font=font_date, anchor="mm")
+        # Đặt ngày tháng ở khoảng 16% chiều cao ảnh
+        d.text((w * 0.5, h * 0.16), date_str, fill=(255, 225, 100), font=font_date, anchor="mm")
 
-        # Điền các con số vào các khung trắng đã căn chuẩn theo mẫu mới:
+        # Tọa độ các giải tính theo tỷ lệ phần trăm (%) kích thước ảnh template mới:
+        cx = w * 0.64  # Trục ngang khu vực điền số
         
-        # 1. Giải Đặc Biệt (Màu đỏ, chữ to)
-        d.text((515, 265), data["G.ĐB"], fill=(200, 0, 0), font=font_db, anchor="mm")
+        # 1. Giải Đặc Biệt (~23.5% chiều cao ảnh)
+        d.text((cx, h * 0.235), data["G.ĐB"], fill=(200, 0, 0), font=font_db, anchor="mm")
         
-        # 2. Giải nhất
-        d.text((515, 320), data["G.1"], fill=(20, 20, 20), font=font_num, anchor="mm")
+        # 2. Giải nhất (~29.0%)
+        d.text((cx, h * 0.290), data["G.1"], fill=(20, 20, 20), font=font_num, anchor="mm")
         
-        # 3. Giải nhì (2 số)
-        d.text((380, 375), data["G.2"][0], fill=(20, 20, 20), font=font_num, anchor="mm")
-        d.text((650, 375), data["G.2"][1], fill=(20, 20, 20), font=font_num, anchor="mm")
+        # 3. Giải nhì (~34.5%)
+        d.text((w * 0.47, h * 0.345), data["G.2"][0], fill=(20, 20, 20), font=font_num, anchor="mm")
+        d.text((w * 0.81, h * 0.345), data["G.2"][1], fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 4. Giải ba (6 số - 2 hàng x 3 cột)
-        g3_coords = [
-            (345, 430), (515, 430), (685, 430),
-            (345, 470), (515, 470), (685, 470)
-        ]
+        # 4. Giải ba (~40.5% và ~44.5%)
+        g3_y1, g3_y2 = h * 0.405, h * 0.445
+        g3_xs = [w * 0.43, w * 0.64, w * 0.85]
         for i, num in enumerate(data["G.3"]):
-            if i < len(g3_coords):
-                d.text(g3_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
+            col = i % 3
+            row_y = g3_y1 if i < 3 else g3_y2
+            d.text((g3_xs[col], row_y), num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 5. Giải tư (4 số)
-        g4_coords = [(330, 525), (450, 525), (580, 525), (705, 525)]
+        # 5. Giải tư (~50.5%)
+        g4_xs = [w * 0.41, w * 0.54, w * 0.68, w * 0.83]
         for i, num in enumerate(data["G.4"]):
-            if i < len(g4_coords):
-                d.text(g4_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
+            if i < len(g4_xs):
+                d.text((g4_xs[i], h * 0.505), num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 6. Giải năm (6 số - 2 hàng x 3 cột)
-        g5_coords = [
-            (380, 580), (515, 580), (650, 580),
-            (380, 620), (515, 620), (650, 620)
-        ]
+        # 6. Giải năm (~56.5% và ~60.5%)
+        g5_y1, g5_y2 = h * 0.565, h * 0.605
+        g5_xs = [w * 0.47, w * 0.64, w * 0.81]
         for i, num in enumerate(data["G.5"]):
-            if i < len(g5_coords):
-                d.text(g5_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
+            col = i % 3
+            row_y = g5_y1 if i < 3 else g5_y2
+            d.text((g5_xs[col], row_y), num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 7. Giải sáu (3 số)
-        g6_coords = [(380, 675), (515, 675), (650, 675)]
+        # 7. Giải sáu (~66.5%)
+        g6_xs = [w * 0.47, w * 0.64, w * 0.81]
         for i, num in enumerate(data["G.6"]):
-            if i < len(g6_coords):
-                d.text(g6_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
+            if i < len(g6_xs):
+                d.text((g6_xs[i], h * 0.665), num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 8. Giải bảy (4 số - màu đỏ)
-        g7_coords = [(350, 730), (475, 730), (600, 730), (725, 730)]
+        # 8. Giải bảy (~72.0% - màu đỏ)
+        g7_xs = [w * 0.44, w * 0.58, w * 0.72, w * 0.86]
         for i, num in enumerate(data["G.7"]):
-            if i < len(g7_coords):
-                d.text(g7_coords[i], num, fill=(200, 0, 0), font=font_num, anchor="mm")
+            if i < len(g7_xs):
+                d.text((g7_xs[i], h * 0.720), num, fill=(200, 0, 0), font=font_num, anchor="mm")
 
         img_path = "xsmb_result.png"
         img.save(img_path)
@@ -138,12 +145,12 @@ async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
             caption_text = f"🐴 **KẾT QUẢ XSMB**\n🏆 **XỔ SỐ MIỀN BẮC – Ngày {now.strftime('%d/%m/%Y')}**\n✅ Dữ liệu đã xác nhận"
             with open(img_path, 'rb') as photo:
                 await bot_instance.send_photo(chat_id=target_chat_id, photo=photo, caption=caption_text)
-            logging.info("Đã gửi ảnh kết quả XSMB chuẩn form thành công!")
+            logging.info("Đã gửi ảnh kết quả XSMB thành công!")
     except Exception as e:
         logging.error(f"Lỗi khi xử lý ảnh XSMB: {e}")
 
 async def manual_test_xsmb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Đang tạo ảnh kết quả XSMB chuẩn form...")
+    await update.message.reply_text("🔄 Đang tạo ảnh kết quả XSMB theo tỉ lệ chuẩn...")
     await job_send_xsmb(context.bot, update.effective_chat.id)
 
 async def run_xsmb_scheduler(bot_instance: Bot):
