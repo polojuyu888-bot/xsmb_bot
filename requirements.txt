@@ -1,5 +1,7 @@
-httpx
-beautifulsoup4
-pillow
+fastapi
+uvicorn
 python-telegram-bot
+beautifulsoup4
+httpx
+Pillow
 apscheduler
