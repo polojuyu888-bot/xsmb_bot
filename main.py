@@ -19,26 +19,18 @@ TOKEN_XSMB = os.getenv("BOT_TOKEN_XSMB")
 TOKEN_MOD = os.getenv("BOT_TOKEN_MOD")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# ==========================================
-# 1. BOT TÀI VỤ
-# ==========================================
 async def run_bot_taivu():
     if not TOKEN_TAIVU:
-        logging.warning("Chưa cấu hình BOT_TOKEN_TAIVU, bỏ qua Bot Tài Vụ.")
         return
     app = ApplicationBuilder().token(TOKEN_TAIVU).build()
-    logging.info("Bot 1 (Tài vụ) đang khởi động...")
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
     while True:
         await asyncio.sleep(3600)
 
-# ==========================================
-# 2. HÀM CÀO DỮ LIỆU XSMB THỰC TẾ (REAL-TIME)
-# ==========================================
 async def fetch_xsmb_results():
-    """Cào kết quả XSMB thực tế từ nguồn công khai, có bộ số mẫu dự phòng khi chưa quay"""
+    """Cào kết quả XSMB thực tế, có bộ số mẫu dự phòng"""
     results = {
         "G.ĐB": "80129",
         "G.1":  "26381",
@@ -65,19 +57,14 @@ async def fetch_xsmb_results():
         
     return results
 
-# ==========================================
-# 3. HÀM GHÉP SỐ VÀO ẢNH NỀN MẪU (TEMPLATE)
-# ==========================================
 async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
     try:
         logging.info("Đang tạo ảnh kết quả XSMB từ template mẫu...")
         data = await fetch_xsmb_results()
 
-        # Mở file ảnh nền template.png trên GitHub
         if os.path.exists("template.png"):
             img = Image.open("template.png").convert("RGB")
         else:
-            logging.error("Không tìm thấy file template.png! Đang tạo ảnh trắng dự phòng.")
             img = Image.new('RGB', (800, 1100), color=(255, 255, 255))
 
         d = ImageDraw.Draw(img)
@@ -89,68 +76,80 @@ async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
         except Exception:
             font_num = font_db = font_date = ImageFont.load_default()
 
-        # Tự động cập nhật ngày tháng động theo hệ thống
+        # 1. Xóa vùng ngày tháng cũ trên template bằng hình chữ nhật trắng
+        d.rectangle([250, 90, 550, 120], fill=(160, 20, 20)) # Vùng nền đỏ tiêu đề ngày
+        
         now = datetime.now()
         days_vn = ["THỨ HAI", "THỨ BA", "THỨ TƯ", "THỨ NĂM", "THỨ SÁU", "THỨ BẢY", "CHỦ NHẬT"]
         day_str = days_vn[now.weekday()]
         date_str = f"{day_str} - {now.strftime('%d/%m/%Y')}"
-        
-        # In ngày tháng tự động lên tiêu đề ảnh (Đã chỉnh lại tọa độ Y phù hợp)
         d.text((400, 105), date_str, fill=(255, 225, 100), font=font_date, anchor="mm")
 
-        # Điền các con số vào đúng các ô tọa độ chuẩn đã căn chỉnh:
-        
-        # 1. Giải Đặc Biệt (Màu đỏ, chữ to)
-        d.text((490, 280), data["G.ĐB"], fill=(200, 0, 0), font=font_db, anchor="mm")
-        
-        # 2. Giải 1
-        d.text((490, 360), data["G.1"], fill=(20, 20, 20), font=font_num, anchor="mm")
-        
-        # 3. Giải 2 (2 số)
-        d.text((360, 430), data["G.2"][0], fill=(20, 20, 20), font=font_num, anchor="mm")
-        d.text((625, 430), data["G.2"][1], fill=(20, 20, 20), font=font_num, anchor="mm")
+        # Danh sách các vùng ô cần xóa trắng chữ cũ trước khi điền số mới:
+        # [x1, y1, x2, y2]
+        boxes_to_clear = [
+            [220, 200, 760, 260],  # G.ĐB
+            [220, 270, 760, 325],  # G.1
+            [220, 335, 760, 395],  # G.2
+            [220, 405, 760, 520],  # G.3
+            [220, 530, 760, 580],  # G.4
+            [220, 590, 760, 700],  # G.5
+            [220, 710, 760, 760],  # G.6
+            [220, 775, 760, 835],  # G.7
+        ]
+        for box in boxes_to_clear:
+            d.rectangle(box, fill=(255, 255, 255))
 
-        # 4. Giải 3 (6 số - phân bổ 2 hàng x 3 cột)
+        # 2. Điền các con số mới vào đúng tọa độ
+        # Giải Đặc Biệt
+        d.text((490, 230), data["G.ĐB"], fill=(200, 0, 0), font=font_db, anchor="mm")
+        
+        # Giải 1
+        d.text((490, 297), data["G.1"], fill=(20, 20, 20), font=font_num, anchor="mm")
+        
+        # Giải 2 (2 số)
+        d.text((360, 365), data["G.2"][0], fill=(20, 20, 20), font=font_num, anchor="mm")
+        d.text((625, 365), data["G.2"][1], fill=(20, 20, 20), font=font_num, anchor="mm")
+
+        # Giải 3 (6 số)
         g3_coords = [
-            (325, 500), (490, 500), (655, 500),
-            (325, 550), (490, 550), (655, 550)
+            (325, 435), (490, 435), (655, 435),
+            (325, 485), (490, 485), (655, 485)
         ]
         for i, num in enumerate(data["G.3"]):
             if i < len(g3_coords):
                 d.text(g3_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 5. Giải 4 (4 số trên 1 hàng)
-        g4_coords = [(300, 620), (420, 620), (550, 620), (675, 620)]
+        # Giải 4 (4 số)
+        g4_coords = [(300, 555), (420, 555), (550, 555), (675, 555)]
         for i, num in enumerate(data["G.4"]):
             if i < len(g4_coords):
                 d.text(g4_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 6. Giải 5 (6 số - 2 hàng x 3 cột)
+        # Giải 5 (6 số)
         g5_coords = [
-            (360, 690), (490, 690), (620, 690),
-            (360, 740), (490, 740), (620, 740)
+            (360, 620), (490, 620), (620, 620),
+            (360, 665), (490, 665), (620, 665)
         ]
         for i, num in enumerate(data["G.5"]):
             if i < len(g5_coords):
                 d.text(g5_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 7. Giải 6 (3 số)
-        g6_coords = [(360, 810), (490, 810), (620, 810)]
+        # Giải 6 (3 số)
+        g6_coords = [(360, 735), (490, 735), (620, 735)]
         for i, num in enumerate(data["G.6"]):
             if i < len(g6_coords):
                 d.text(g6_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 8. Giải 7 (4 số - màu đỏ)
-        g7_coords = [(330, 880), (455, 880), (580, 880), (705, 880)]
+        # Giải 7 (4 số - màu đỏ)
+        g7_coords = [(330, 805), (455, 805), (580, 805), (705, 805)]
         for i, num in enumerate(data["G.7"]):
             if i < len(g7_coords):
                 d.text(g7_coords[i], num, fill=(200, 0, 0), font=font_num, anchor="mm")
 
-        # Lưu ảnh hoàn thiện
         img_path = "xsmb_result.png"
         img.save(img_path)
 
-        # Gửi ảnh kèm chú thích vào nhóm Telegram
         if target_chat_id:
             caption_text = f"🐷 **KẾT QUẢ XSMB**\n🏆 **XỔ SỐ MIỀN BẮC – Ngày {now.strftime('%d/%m/%Y')}**\n✅ Dữ liệu đã xác nhận"
             with open(img_path, 'rb') as photo:
@@ -164,7 +163,6 @@ async def manual_test_xsmb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await job_send_xsmb(context.bot, update.effective_chat.id)
 
 async def run_xsmb_scheduler(bot_instance: Bot):
-    """Tự động kích hoạt lúc 18:35 hàng ngày"""
     while True:
         now = datetime.now()
         if now.hour == 18 and now.minute == 35:
@@ -185,9 +183,6 @@ async def run_bot_xsmb():
     while True:
         await asyncio.sleep(3600)
 
-# ==========================================
-# 4. BOT QUẢN LÝ / CHỐNG SPAM
-# ==========================================
 async def mod_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -210,9 +205,6 @@ async def run_bot_mod():
     while True:
         await asyncio.sleep(3600)
 
-# ==========================================
-# 5. WEB SERVICE (FastAPI)
-# ==========================================
 api_app = FastAPI()
 
 @api_app.get("/")
@@ -224,9 +216,6 @@ async def run_fastapi_server():
     server = uvicorn.Server(config)
     await server.serve()
 
-# ==========================================
-# HÀM CHÍNH
-# ==========================================
 async def main():
     await asyncio.gather(
         run_fastapi_server(),
