@@ -29,7 +29,7 @@ async def run_bot_taivu():
         await asyncio.sleep(3600)
 
 async def fetch_xsmb_results():
-    """Cào kết quả XSMB thực tế, có bộ số mẫu dự phòng khi chưa quay"""
+    """Cào kết quả XSMB thực tế"""
     results = {
         "G.ĐB": "80129",
         "G.1":  "26381",
@@ -58,8 +58,27 @@ async def fetch_xsmb_results():
 
 async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
     try:
-        logging.info("Đang tạo ảnh kết quả XSMB chuẩn tỷ lệ...")
-        data = await fetch_xsmb_results()
+        logging.info("Đang tạo ảnh kết quả XSMB...")
+        
+        # Kiểm tra thời gian: Nếu chưa đến 18:35 thì để dạng dấu 3 chấm (...)
+        now = datetime.now()
+        is_before_draw = (now.hour < 18) or (now.hour == 18 and now.minute < 35)
+
+        if is_before_draw:
+            data = {
+                "G.ĐB": "...",
+                "G.1":  "...",
+                "G.2":  ["...", "..."],
+                "G.3":  ["...", "...", "...", "...", "...", "..."],
+                "G.4":  ["...", "...", "...", "..."],
+                "G.5":  ["...", "...", "...", "...", "...", "..."],
+                "G.6":  ["...", "...", "..."],
+                "G.7":  ["...", "...", "...", "..."]
+            }
+            status_text = "⏳ Chưa đến giờ quay thưởng"
+        else:
+            data = await fetch_xsmb_results()
+            status_text = "✅ Dữ liệu đã xác nhận"
 
         if os.path.exists("template.png"):
             img = Image.open("template.png").convert("RGB")
@@ -70,37 +89,38 @@ async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
         d = ImageDraw.Draw(img)
         
         try:
+            # Thử dùng font đậm (arialbd.ttf) cho đúng yêu cầu in đậm
             f_size_num = int(w * 0.035)
             f_size_db = int(w * 0.048)
             f_size_date = int(w * 0.026)
             
-            font_num = ImageFont.truetype("arial.ttf", f_size_num)
-            font_db = ImageFont.truetype("arial.ttf", f_size_db)
-            font_date = ImageFont.truetype("arial.ttf", f_size_date)
+            font_num = ImageFont.truetype("arialbd.ttf", f_size_num)
+            font_db = ImageFont.truetype("arialbd.ttf", f_size_db)
+            font_date = ImageFont.truetype("arialbd.ttf", f_size_date)
         except Exception:
             font_num = font_db = font_date = ImageFont.load_default()
 
-        # 1. Ngày tháng (Đã dịch xuống đúng dải băng màu xanh dương chữ XSMB)
-        now = datetime.now()
+        # Ngày tháng
         days_vn = ["THỨ HAI", "THỨ BA", "THỨ TƯ", "THỨ NĂM", "THỨ SÁU", "THỨ BẢY", "CHỦ NHẬT"]
         day_str = days_vn[now.weekday()]
         date_str = f"{day_str} - {now.strftime('%d/%m/%Y')}"
         d.text((w * 0.5, h * 0.192), date_str, fill=(255, 225, 100), font=font_date, anchor="mm")
 
-        # 2. Tọa độ các giải (Đã căn chỉnh hạ thấp xuống đúng các ô trắng trong bảng)
-        cx = w * 0.64  # Trục ngang khu vực điền số
+        # Tọa độ các giải
+        cx = w * 0.64
         
-        # Giải Đặc Biệt
-        d.text((cx, h * 0.285), data["G.ĐB"], fill=(200, 0, 0), font=font_db, anchor="mm")
+        # Giải Đặc Biệt (3 chấm màu đỏ nếu chưa quay)
+        db_color = (200, 0, 0)
+        d.text((cx, h * 0.285), data["G.ĐB"], fill=db_color, font=font_db, anchor="mm")
         
         # Giải nhất
         d.text((cx, h * 0.345), data["G.1"], fill=(20, 20, 20), font=font_num, anchor="mm")
         
-        # Giải nhì (2 số)
+        # Giải nhì
         d.text((w * 0.47, h * 0.405), data["G.2"][0], fill=(20, 20, 20), font=font_num, anchor="mm")
         d.text((w * 0.81, h * 0.405), data["G.2"][1], fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # Giải ba (6 số - 2 hàng)
+        # Giải ba
         g3_y1, g3_y2 = h * 0.465, h * 0.505
         g3_xs = [w * 0.43, w * 0.64, w * 0.85]
         for i, num in enumerate(data["G.3"]):
@@ -108,13 +128,13 @@ async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
             row_y = g3_y1 if i < 3 else g3_y2
             d.text((g3_xs[col], row_y), num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # Giải tư (4 số)
+        # Giải tư
         g4_xs = [w * 0.41, w * 0.54, w * 0.68, w * 0.83]
         for i, num in enumerate(data["G.4"]):
             if i < len(g4_xs):
                 d.text((g4_xs[i], h * 0.565), num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # Giải năm (6 số - 2 hàng)
+        # Giải năm
         g5_y1, g5_y2 = h * 0.625, h * 0.665
         g5_xs = [w * 0.47, w * 0.64, w * 0.81]
         for i, num in enumerate(data["G.5"]):
@@ -122,13 +142,13 @@ async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
             row_y = g5_y1 if i < 3 else g5_y2
             d.text((g5_xs[col], row_y), num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # Giải sáu (3 số)
+        # Giải sáu
         g6_xs = [w * 0.47, w * 0.64, w * 0.81]
         for i, num in enumerate(data["G.6"]):
             if i < len(g6_xs):
                 d.text((g6_xs[i], h * 0.725), num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # Giải bảy (4 số - màu đỏ)
+        # Giải bảy (màu đỏ)
         g7_xs = [w * 0.44, w * 0.58, w * 0.72, w * 0.86]
         for i, num in enumerate(data["G.7"]):
             if i < len(g7_xs):
@@ -138,7 +158,7 @@ async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
         img.save(img_path)
 
         if target_chat_id:
-            caption_text = f"🐴 **KẾT QUẢ XSMB**\n🏆 **XỔ SỐ MIỀN BẮC – Ngày {now.strftime('%d/%m/%Y')}**\n✅ Dữ liệu đã xác nhận"
+            caption_text = f"🐴 **KẾT QUẢ XSMB**\n🏆 **XỔ SỐ MIỀN BẮC – Ngày {now.strftime('%d/%m/%Y')}**\n{status_text}"
             with open(img_path, 'rb') as photo:
                 await bot_instance.send_photo(chat_id=target_chat_id, photo=photo, caption=caption_text)
             logging.info("Đã gửi ảnh kết quả XSMB thành công!")
@@ -146,7 +166,7 @@ async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
         logging.error(f"Lỗi khi xử lý ảnh XSMB: {e}")
 
 async def manual_test_xsmb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Đang tạo ảnh kết quả XSMB chuẩn tỷ lệ mới...")
+    await update.message.reply_text("🔄 Đang tạo ảnh kết quả XSMB...")
     await job_send_xsmb(context.bot, update.effective_chat.id)
 
 async def run_xsmb_scheduler(bot_instance: Bot):
