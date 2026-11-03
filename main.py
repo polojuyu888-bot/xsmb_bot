@@ -13,7 +13,6 @@ from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, fil
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO)
 
-# Lấy các Token và Chat ID từ biến môi trường trên Render
 TOKEN_TAIVU = os.getenv("BOT_TOKEN_TAIVU")
 TOKEN_XSMB = os.getenv("BOT_TOKEN_XSMB")
 TOKEN_MOD = os.getenv("BOT_TOKEN_MOD")
@@ -59,14 +58,12 @@ async def fetch_xsmb_results():
 
 async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
     try:
-        logging.info("Đang tạo ảnh kết quả XSMB từ template mẫu mới...")
+        logging.info("Đang tạo ảnh kết quả XSMB từ template chú ngựa mới...")
         data = await fetch_xsmb_results()
 
-        # Mở file ảnh nền template.png trên GitHub
         if os.path.exists("template.png"):
             img = Image.open("template.png").convert("RGB")
         else:
-            logging.error("Không tìm thấy file template.png! Đang tạo ảnh trắng dự phòng.")
             img = Image.new('RGB', (800, 1100), color=(255, 255, 255))
 
         d = ImageDraw.Draw(img)
@@ -78,78 +75,75 @@ async def job_send_xsmb(bot_instance: Bot, target_chat_id: str):
         except Exception:
             font_num = font_db = font_date = ImageFont.load_default()
 
-        # Tự động cập nhật ngày tháng động theo hệ thống lên tiêu đề
+        # Tự động cập nhật ngày tháng động xuống đúng vị trí dưới nút XSMB
         now = datetime.now()
         days_vn = ["THỨ HAI", "THỨ BA", "THỨ TƯ", "THỨ NĂM", "THỨ SÁU", "THỨ BẢY", "CHỦ NHẬT"]
         day_str = days_vn[now.weekday()]
         date_str = f"{day_str} - {now.strftime('%d/%m/%Y')}"
         
-        # In ngày tháng vào phần dưới tiêu đề của template
-        d.text((400, 125), date_str, fill=(255, 225, 100), font=font_date, anchor="mm")
+        d.text((400, 158), date_str, fill=(255, 225, 100), font=font_date, anchor="mm")
 
-        # Điền các con số vào các khung trắng tương ứng:
+        # Điền các con số vào các khung trắng đã căn chuẩn theo mẫu mới:
         
         # 1. Giải Đặc Biệt (Màu đỏ, chữ to)
-        d.text((515, 235), data["G.ĐB"], fill=(200, 0, 0), font=font_db, anchor="mm")
+        d.text((515, 265), data["G.ĐB"], fill=(200, 0, 0), font=font_db, anchor="mm")
         
         # 2. Giải nhất
-        d.text((515, 295), data["G.1"], fill=(20, 20, 20), font=font_num, anchor="mm")
+        d.text((515, 320), data["G.1"], fill=(20, 20, 20), font=font_num, anchor="mm")
         
         # 3. Giải nhì (2 số)
-        d.text((380, 355), data["G.2"][0], fill=(20, 20, 20), font=font_num, anchor="mm")
-        d.text((650, 355), data["G.2"][1], fill=(20, 20, 20), font=font_num, anchor="mm")
+        d.text((380, 375), data["G.2"][0], fill=(20, 20, 20), font=font_num, anchor="mm")
+        d.text((650, 375), data["G.2"][1], fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 4. Giải ba (6 số - phân bổ 2 hàng x 3 cột)
+        # 4. Giải ba (6 số - 2 hàng x 3 cột)
         g3_coords = [
-            (345, 415), (515, 415), (685, 415),
-            (345, 455), (515, 455), (685, 455)
+            (345, 430), (515, 430), (685, 430),
+            (345, 470), (515, 470), (685, 470)
         ]
         for i, num in enumerate(data["G.3"]):
             if i < len(g3_coords):
                 d.text(g3_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
-        # 5. Giải tư (4 số trên 1 hàng)
-        g4_coords = [(330, 520), (450, 520), (580, 520), (705, 520)]
+        # 5. Giải tư (4 số)
+        g4_coords = [(330, 525), (450, 525), (580, 525), (705, 525)]
         for i, num in enumerate(data["G.4"]):
             if i < len(g4_coords):
                 d.text(g4_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
         # 6. Giải năm (6 số - 2 hàng x 3 cột)
         g5_coords = [
-            (380, 585), (515, 585), (650, 585),
-            (380, 625), (515, 625), (650, 625)
+            (380, 580), (515, 580), (650, 580),
+            (380, 620), (515, 620), (650, 620)
         ]
         for i, num in enumerate(data["G.5"]):
             if i < len(g5_coords):
                 d.text(g5_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
         # 7. Giải sáu (3 số)
-        g6_coords = [(380, 690), (515, 690), (650, 690)]
+        g6_coords = [(380, 675), (515, 675), (650, 675)]
         for i, num in enumerate(data["G.6"]):
             if i < len(g6_coords):
                 d.text(g6_coords[i], num, fill=(20, 20, 20), font=font_num, anchor="mm")
 
         # 8. Giải bảy (4 số - màu đỏ)
-        g7_coords = [(350, 755), (475, 755), (600, 755), (725, 755)]
+        g7_coords = [(350, 730), (475, 730), (600, 730), (725, 730)]
         for i, num in enumerate(data["G.7"]):
             if i < len(g7_coords):
                 d.text(g7_coords[i], num, fill=(200, 0, 0), font=font_num, anchor="mm")
 
-        # Lưu ảnh hoàn thiện
         img_path = "xsmb_result.png"
         img.save(img_path)
 
-        # Gửi ảnh kèm chú thích vào nhóm Telegram
         if target_chat_id:
             caption_text = f"🐴 **KẾT QUẢ XSMB**\n🏆 **XỔ SỐ MIỀN BẮC – Ngày {now.strftime('%d/%m/%Y')}**\n✅ Dữ liệu đã xác nhận"
             with open(img_path, 'rb') as photo:
                 await bot_instance.send_photo(chat_id=target_chat_id, photo=photo, caption=caption_text)
-            logging.info("Đã gửi ảnh kết quả XSMB từ template chú ngựa thành công!")
+            logging.info("Đã gửi ảnh kết quả XSMB chuẩn form thành công!")
     except Exception as e:
         logging.error(f"Lỗi khi xử lý ảnh XSMB: {e}")
 
 async def manual_test_xsmb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Đang tạo ảnh kết quả XSMB từ template chú ngựa...")
+    await update.message.reply_text("🔄 Đang tạo ảnh kết quả XSMB chuẩn form...")
     await job_send_xsmb(context.bot, update.effective_chat.id)
 
 async def run_xsmb_scheduler(bot_instance: Bot):
